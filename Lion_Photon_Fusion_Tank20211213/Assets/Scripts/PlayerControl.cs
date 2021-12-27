@@ -14,7 +14,11 @@ public class PlayerControl : NetworkBehaviour
     [Header("發射子彈間隔"), Range(0, 1.5f)]
     public float intervalFire = 0.35f;
     [Header("子彈物件")]
-    public GameObject bullet;
+    public Bullet bullet;
+    [Header("子彈生成位置")]
+    public Transform pointFire;
+    [Header("砲塔")]
+    public Transform traTower;
 
     /// <summary>
     /// 連線角色控制器
@@ -22,10 +26,23 @@ public class PlayerControl : NetworkBehaviour
     private NetworkCharacterController ncc;
     #endregion
 
+    #region 
+    /// <summary>
+    /// 開槍間隔計時器
+    /// </summary>
+    public TickTimer interval { get; set; }
+    #endregion 
+
     #region 事件
     private void Awake()
     {
         ncc = GetComponent<NetworkCharacterController>();
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        // 如果 碰到 物件 名稱 包含 子彈 就 刪除
+        if (collision.gameObject.name.Contains("子彈")) Destroy(gameObject);
     }
     #endregion
 
@@ -36,6 +53,7 @@ public class PlayerControl : NetworkBehaviour
     public override void FixedUpdateNetwork()
     {
         Move();
+        Fire();
     }
 
     /// <summary>
@@ -48,7 +66,40 @@ public class PlayerControl : NetworkBehaviour
         {
             // 連線角色控制器.移動(速度 * 方向 * 連線一禎時間)
             ncc.Move(speed * dataInput.direction * Runner.DeltaTime);
+
+            // 取得滑鼠座標，並將 Y 指定與炮塔一樣的高度避免砲塔歪掉
+            Vector3 positionMouse = dataInput.positionMouse;
+            positionMouse.y = traTower.position.y;
+            // 砲塔 的 前方軸向 = 滑鼠 - 坦克 (向量)
+            traTower.forward = positionMouse - transform.position;
         }
     }
-    #endregion 
+
+    /// <summary>
+    /// 開槍
+    /// </summary>
+    private void Fire()
+    {
+        if (GetInput(out NetworkInputData dataInput))                               // 如果 玩家有輸入資料
+        {
+            if (interval.ExpiredOrNotRunning(Runner))                               // 如果 開槍間隔計時器 過期或者沒有在執行
+            {
+                if (dataInput.inputFire)                                            // 如果 輸入資料是開槍左鍵
+                {
+                    interval = TickTimer.CreateFromSeconds(Runner, intervalFire);   // 建立計時器
+
+                    Runner.Spawn(                                                   // 連線.生成 (連線物件．座標．角度．輸入權限．匿名函式(執行器．生成物件) => {})
+                        bullet,
+                        pointFire.position,
+                        pointFire.rotation,
+                        Object.InputAuthority,
+                        (runner, objectSpawn) =>
+                        {
+                        objectSpawn.GetComponent<Bullet>().Init();
+                        });
+                }
+            }
+        }
+    }
+    #endregion
 }
